@@ -2,7 +2,9 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
+from pandarallel import pandarallel
+pandarallel.initialize(nb_workers=24)
+import gc
 
 # 存储数据的根目录
 ROOT_PATH = "../data"
@@ -19,7 +21,7 @@ ACTION_LIST = ["read_comment", "like", "click_avatar", "forward"]
 FEA_COLUMN_LIST = ["read_comment", "like", "click_avatar", "forward", "comment", "follow", "favorite"]
 FEA_FEED_LIST = ['feedid', 'authorid', 'videoplayseconds', 'bgm_song_id', 'bgm_singer_id']
 # 负样本下采样比例(负样本:正样本)
-ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 5, "forward": 10, "comment": 10, "follow": 10,
+ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 4, "forward": 8, "comment": 10, "follow": 10,
                       "favorite": 10}
 
 def process_embed(train):
@@ -33,6 +35,10 @@ def process_embed(train):
         feed_embed_array[i] += y
     temp = pd.DataFrame(columns=[f"embed{i}" for i in range(512)], data=feed_embed_array)
     train = pd.concat((train, temp), axis=1)
+    del feed_embed_array
+    del temp
+    if i % 10000 == 0:
+        gc.collect()
     return train
 
 def prepare_data():
@@ -43,8 +49,14 @@ def prepare_data():
     # add feed feature
     train = pd.merge(user_action_df, feed_info_df[FEA_FEED_LIST], on='feedid', how='left')
     test = pd.merge(test, feed_info_df[FEA_FEED_LIST], on='feedid', how='left')
+    
     test["videoplayseconds"] = np.log(test["videoplayseconds"] + 1.0)
+    test = pd.merge(test, feed_embed, on=['feedid'], how='left')
+    test = process_embed(test)
+        
     test.to_csv(ROOT_PATH + f'/test_data.csv', index=False)
+    del test
+    gc.collect()
     for action in tqdm(ACTION_LIST):
         print(f"prepare data for {action}")
         tmp = train.drop_duplicates(['userid', 'feedid', action], keep='last')
@@ -52,7 +64,12 @@ def prepare_data():
         df_neg = df_neg.sample(frac=1.0 / ACTION_SAMPLE_RATE[action], random_state=42, replace=False)
         df_all = pd.concat([df_neg, tmp[tmp[action] == 1]])
         df_all["videoplayseconds"] = np.log(df_all["videoplayseconds"] + 1.0)
+        df_all = pd.merge(df_all, feed_embed, on=['feedid'], how='left')
+        
+        df_all = process_embed(df_all)
         df_all.to_csv(ROOT_PATH + f'/train_data_for_{action}.csv', index=False)
+        del df_all
+        gc.collect()
 
 
 if __name__ == "__main__":

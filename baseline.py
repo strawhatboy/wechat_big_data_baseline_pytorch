@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
+import argparse
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
+import random
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from prepare_data import process_embed
 from tqdm import tqdm
 from deepctr_torch.inputs import SparseFeat, DenseFeat, get_feature_names
 from deepctr_torch.models.deepfm import *
 from deepctr_torch.models.basemodel import *
+import gc
 
 # 存储数据的根目录
 ROOT_PATH = "../data"
@@ -29,7 +34,7 @@ ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 5, "forward"
 class MyBaseModel(BaseModel):
 
     def fit(self, x=None, y=None, batch_size=None, epochs=1, verbose=1, initial_epoch=0, validation_split=0.,
-            validation_data=None, shuffle=True, callbacks=None):
+            validation_data=None, shuffle=True, callbacks=None, early_stop=50, model_path='saved.dict'):
 
         if isinstance(x, dict):
             x = [x[feature] for feature in self.feature_index]
@@ -106,6 +111,8 @@ class MyBaseModel(BaseModel):
         # Train
         print("Train on {0} samples, validate on {1} samples, {2} steps per epoch".format(
             len(train_tensor_data), len(val_y), steps_per_epoch))
+        max_auc = -999999
+        early_stop_count = 0
         for epoch in range(initial_epoch, epochs):
             callbacks.on_epoch_begin(epoch)
             epoch_logs = {}
@@ -115,7 +122,7 @@ class MyBaseModel(BaseModel):
             train_result = {}
             try:
                 with tqdm(enumerate(train_loader), disable=verbose != 1) as t:
-                    for _, (x_train, y_train) in t:
+                    for i, (x_train, y_train) in t:
                         x = x_train.to(self.device).float()
                         y = y_train.to(self.device).float()
 
@@ -132,6 +139,7 @@ class MyBaseModel(BaseModel):
                         total_loss.backward()
                         optim.step()
 
+
                         if verbose > 0:
                             for name, metric_fun in self.metrics.items():
                                 if name not in train_result:
@@ -143,6 +151,25 @@ class MyBaseModel(BaseModel):
                                     temp = 0
                                 finally:
                                     train_result[name].append(temp)
+                            
+                            # if i % 1000 == 0 and do_validation:
+                                
+                            #     eval_result = self.evaluate(val_x, val_y, batch_size)
+                            #     for name, result in eval_result.items():
+                            #         epoch_logs["val_" + name] = result
+                                
+                            #     print('validating in the middle, auc: {}, max_auc: {}'.format(epoch_logs['val_auc'], max_auc))
+                            #     if epoch_logs['val_auc'] >= max_auc:
+                            #         torch.save(self.__dict__, model_path)
+                            #         max_auc = epoch_logs['val_auc']
+                            #         early_stop_count = 0
+                            #     else:
+                            #         early_stop_count += 1
+                            #         if early_stop_count >= early_stop:
+                            #             print('early stopped.')
+                            #             print('best auc: {}'.format(max_auc))
+                            #             self.stop_training = True
+                
             except KeyboardInterrupt:
                 t.close()
                 raise
@@ -157,6 +184,17 @@ class MyBaseModel(BaseModel):
                 eval_result = self.evaluate(val_x, val_y, batch_size)
                 for name, result in eval_result.items():
                     epoch_logs["val_" + name] = result
+                if epoch_logs['val_auc'] >= max_auc:
+                    torch.save(self.state_dict(), model_path)
+                    max_auc = epoch_logs['val_auc']
+                    early_stop_count = 0
+                else:
+                    # early_stop_count += 1
+                    # if early_stop_count >= early_stop:
+                    print('early stopped.')
+                    print('best auc: {}'.format(max_auc))
+                    self.stop_training = True
+                    
             # verbose
             if verbose > 0:
                 epoch_time = int(time.time() - start_time)
@@ -235,7 +273,7 @@ class MyDeepFM(MyBaseModel):
                  linear_feature_columns, dnn_feature_columns, use_fm=True,
                  dnn_hidden_units=(256, 128),
                  l2_reg_linear=0.00001, l2_reg_embedding=0.00001, l2_reg_dnn=0, init_std=0.0001, seed=1024,
-                 dnn_dropout=0,
+                 dnn_dropout=0.2,
                  dnn_activation='relu', dnn_use_bn=False, task='binary', device='cpu', gpus=None):
 
         super(MyDeepFM, self).__init__(linear_feature_columns, dnn_feature_columns, l2_reg_linear=l2_reg_linear,
@@ -281,32 +319,51 @@ class MyDeepFM(MyBaseModel):
 
         return y_pred
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--runid', type=str, required=True)
+    parser.add_argument('--gpu', type=int, default=0)
+    # parser.add_argument('--')
+    return parser.parse_args()
 
 if __name__ == "__main__":
+    args = vars(parse_args())
+    random.seed(datetime.now())
+    feed_embed = pd.read_csv(FEED_EMBEDDINGS)
     submit = pd.read_csv(ROOT_PATH + '/test_data.csv')[['userid', 'feedid']]
     for action in ACTION_LIST:
+        print('now in phase: {}'.format(action))
         USE_FEAT = ['userid', 'feedid', action] + FEA_FEED_LIST[1:]
         train = pd.read_csv(ROOT_PATH + f'/train_data_for_{action}.csv')[USE_FEAT]
         train = train.sample(frac=1, random_state=42).reset_index(drop=True)
+        
+    
         print("posi prop:")
         print(sum((train[action]==1)*1)/train.shape[0])
         test = pd.read_csv(ROOT_PATH + '/test_data.csv')[[i for i in USE_FEAT if i != action]]
+        
+        # USE_FEAT = USE_FEAT
         target = [action]
         test[target[0]] = 0
         test = test[USE_FEAT]
         data = pd.concat((train, test)).reset_index(drop=True)
-        dense_features = ['videoplayseconds']
+        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)]
         sparse_features = [i for i in USE_FEAT if i not in dense_features and i not in target]
 
+        dense_featuresx = ['videoplayseconds']
         data[sparse_features] = data[sparse_features].fillna(0)
-        data[dense_features] = data[dense_features].fillna(0)
+        data[dense_featuresx] = data[dense_featuresx].fillna(0)
+
+        print('features ok?')
 
         # 1.Label Encoding for sparse features,and do simple Transformation for dense features
         for feat in sparse_features:
             lbe = LabelEncoder()
             data[feat] = lbe.fit_transform(data[feat])
         mms = MinMaxScaler(feature_range=(0, 1))
-        data[dense_features] = mms.fit_transform(data[dense_features])
+
+        # only transform videoplayseconds
+        data[dense_featuresx] = mms.fit_transform(data[dense_featuresx])
 
         # 2.count #unique features for each sparse field,and record dense feature field name
         fixlen_feature_columns = [SparseFeat(feat, data[feat].nunique())
@@ -318,28 +375,62 @@ if __name__ == "__main__":
         feature_names = get_feature_names(
             linear_feature_columns + dnn_feature_columns)
 
+        print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
+
+        data = pd.merge(data, feed_embed, on='feedid', how='left')
+        data = process_embed(data)
+        data = data[USE_FEAT + [f"embed{i}" for i in range(512)]]
+        data[dense_features] = data[dense_features].fillna(0)
+        # data = data.drop_duplicates(['feedid'], keep='last')
+        print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
+
+
+    
+
+        # print(feature_names)
+
+        print('generating input data for model')
         # 3.generate input data for model
         train, test = data.iloc[:train.shape[0]].reset_index(drop=True), data.iloc[train.shape[0]:].reset_index(drop=True)
         train_model_input = {name: train[name] for name in feature_names}
         test_model_input = {name: test[name] for name in feature_names}
 
+
+        del data
+        print('train_data: ')
+        print(train.head())
+        print('test_data: ')
+        print(test.head())
+
+                
+        gc.collect()
+        print('train shape: {}, test shape: {}'.format(train.shape, test.shape))
+
+        
         # 4.Define Model,train,predict and evaluate
         device = 'cpu'
         use_cuda = True
         if use_cuda and torch.cuda.is_available():
             print('cuda ready...')
-            device = 'cuda:0'
+            device = 'cuda:{}'.format(args['gpu'])
 
         model = MyDeepFM(linear_feature_columns=linear_feature_columns, dnn_feature_columns=dnn_feature_columns,
                        task='binary',
-                       l2_reg_embedding=1e-1, device=device)
+                       l2_reg_embedding=1e-1, device=device, seed=int(random.random() * 10240))
 
         model.compile("adagrad", "binary_crossentropy", metrics=["binary_crossentropy", "auc"])
 
-        history = model.fit(train_model_input, train[target].values, batch_size=512, epochs=5, verbose=1,
-                            validation_split=0.2)
+        best_model_path = './out/saved_model_{}_{}.dict'.format(action, args['runid'])
+        history = model.fit(train_model_input, train[target].values, batch_size=256, epochs=10, verbose=1,
+                            validation_split=0.2, model_path=best_model_path)
+        # load best model
+        model.load_state_dict(torch.load(best_model_path))
         pred_ans = model.predict(test_model_input, 128)
         submit[action] = pred_ans
         torch.cuda.empty_cache()
+        
+        del train
+        del test
+        gc.collect()
     # 保存提交文件
-    submit.to_csv("./submit_base_deepfm.csv", index=False)
+    submit.to_csv("./submit/submit_base_deepfm_{}.csv".format(args['runid']), index=False)
