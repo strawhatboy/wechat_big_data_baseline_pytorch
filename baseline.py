@@ -28,7 +28,7 @@ ACTION_LIST = ["read_comment", "like", "click_avatar", "forward"]
 FEA_COLUMN_LIST = ["read_comment", "like", "click_avatar", "forward", "comment", "follow", "favorite"]
 FEA_FEED_LIST = ['feedid', 'authorid', 'videoplayseconds', 'bgm_song_id', 'bgm_singer_id']
 # 负样本下采样比例(负样本:正样本)
-ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 5, "forward": 10, "comment": 10, "follow": 10,
+ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 4, "forward": 8, "comment": 10, "follow": 10,
                       "favorite": 10}
 
 class MyBaseModel(BaseModel):
@@ -323,13 +323,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--runid', type=str, required=True)
     parser.add_argument('--gpu', type=int, default=0)
+    parser.add_argument('--dropout', type=float, default=0)
     # parser.add_argument('--')
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = vars(parse_args())
     random.seed(datetime.now())
-    feed_embed = pd.read_csv(FEED_EMBEDDINGS)
+    feed_embed = pd.read_csv(ROOT_PATH + '/feed_embeddings_new.csv')
     submit = pd.read_csv(ROOT_PATH + '/test_data.csv')[['userid', 'feedid']]
     for action in ACTION_LIST:
         print('now in phase: {}'.format(action))
@@ -347,7 +348,7 @@ if __name__ == "__main__":
         test[target[0]] = 0
         test = test[USE_FEAT]
         data = pd.concat((train, test)).reset_index(drop=True)
-        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)]
+        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]
         sparse_features = [i for i in USE_FEAT if i not in dense_features and i not in target]
 
         dense_featuresx = ['videoplayseconds']
@@ -377,12 +378,12 @@ if __name__ == "__main__":
 
         print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
 
-        data = pd.merge(data, feed_embed, on='feedid', how='left')
-        data = process_embed(data)
-        data = data[USE_FEAT + [f"embed{i}" for i in range(512)]]
-        data[dense_features] = data[dense_features].fillna(0)
+        # data = pd.merge(data, feed_embed, on='feedid', how='left')
+        # # data = process_embed(data)
+        # data = data[USE_FEAT + [f"embed{i}" for i in range(512)]]
+        # data[dense_features] = data[dense_features].fillna(0)
         # data = data.drop_duplicates(['feedid'], keep='last')
-        print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
+        # print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
 
 
     
@@ -392,11 +393,26 @@ if __name__ == "__main__":
         print('generating input data for model')
         # 3.generate input data for model
         train, test = data.iloc[:train.shape[0]].reset_index(drop=True), data.iloc[train.shape[0]:].reset_index(drop=True)
+        
+        user_embed = pd.read_csv(ROOT_PATH + '/user_embeddings_{}.csv'.format(action))
+        train = pd.merge(train, feed_embed, on='feedid', how='left')
+        train = pd.merge(train, user_embed, on='userid', how='left')
+        # data = process_embed(data)
+        train = train[USE_FEAT + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]]
+        train[dense_features] = train[dense_features].fillna(0)
+        test = pd.merge(test, feed_embed, on='feedid', how='left')
+        test = pd.merge(test, user_embed, on='userid', how='left')
+        # data = process_embed(data)
+        test = test[USE_FEAT + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]]
+        test[dense_features] = test[dense_features].fillna(0)
+        # print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
+
         train_model_input = {name: train[name] for name in feature_names}
         test_model_input = {name: test[name] for name in feature_names}
 
 
         del data
+        del user_embed
         print('train_data: ')
         print(train.head())
         print('test_data: ')
@@ -415,7 +431,7 @@ if __name__ == "__main__":
             device = 'cuda:{}'.format(args['gpu'])
 
         model = MyDeepFM(linear_feature_columns=linear_feature_columns, dnn_feature_columns=dnn_feature_columns,
-                       task='binary',
+                       task='binary', dnn_dropout=args['dropout'],
                        l2_reg_embedding=1e-1, device=device, seed=int(random.random() * 10240))
 
         model.compile("adagrad", "binary_crossentropy", metrics=["binary_crossentropy", "auc"])
