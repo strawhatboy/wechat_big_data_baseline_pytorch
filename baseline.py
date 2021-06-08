@@ -348,7 +348,7 @@ if __name__ == "__main__":
         test[target[0]] = 0
         test = test[USE_FEAT]
         data = pd.concat((train, test)).reset_index(drop=True)
-        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]
+        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)] # + [f"user_embed{i}" for i in range(512)]
         sparse_features = [i for i in USE_FEAT if i not in dense_features and i not in target]
 
         dense_featuresx = ['videoplayseconds']
@@ -396,14 +396,14 @@ if __name__ == "__main__":
         
         user_embed = pd.read_csv(ROOT_PATH + '/user_embeddings_{}.csv'.format(action))
         train = pd.merge(train, feed_embed, on='feedid', how='left')
-        train = pd.merge(train, user_embed, on='userid', how='left')
+        # train = pd.merge(train, user_embed, on='userid', how='left')
         # data = process_embed(data)
-        train = train[USE_FEAT + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]]
+        train = train[USE_FEAT + [f"embed{i}" for i in range(512)]] # + [f"user_embed{i}" for i in range(512)]]
         train[dense_features] = train[dense_features].fillna(0)
         test = pd.merge(test, feed_embed, on='feedid', how='left')
-        test = pd.merge(test, user_embed, on='userid', how='left')
+        # test = pd.merge(test, user_embed, on='userid', how='left')
         # data = process_embed(data)
-        test = test[USE_FEAT + [f"embed{i}" for i in range(512)] + [f"user_embed{i}" for i in range(512)]]
+        test = test[USE_FEAT + [f"embed{i}" for i in range(512)]] # + [f"user_embed{i}" for i in range(512)]]
         test[dense_features] = test[dense_features].fillna(0)
         # print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
 
