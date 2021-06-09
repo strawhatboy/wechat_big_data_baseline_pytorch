@@ -12,11 +12,12 @@ from tqdm import tqdm
 import pandas as pd
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
-)
+def init_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
+    )
 
 logger = logging.getLogger("din_prepare")
 
@@ -121,17 +122,19 @@ def gen_train_data(
     ]
     all = all.sample(frac=1, random_state=42, replace=False).reset_index(drop=True)
 
-    all.to_csv(data_path / "all.csv", index=False)
+    all.to_csv(data_path / "train.csv", index=False)
     logger.info("data file saved.")
 
-    split_point = int(len(all.index) * (1 - VAL_RATIO))
-    train = all.iloc[0:split_point]
-    val = all.iloc[split_point:]
+    # no need for train/val splitting, DIN support it...
 
-    train.to_csv(data_path / "train.csv")
-    val.to_csv(data_path / "val.csv")
-    logger.info("train & val data file saved.")
-    return train, val
+    # split_point = int(len(all.index) * (1 - VAL_RATIO))
+    # train = all.iloc[0:split_point]
+    # val = all.iloc[split_point:]
+
+    # train.to_csv(data_path / "train.csv", index=False)
+    # val.to_csv(data_path / "val.csv", index=False)
+    # logger.info("train & val data file saved.")
+    return all
 
 
 def gen_hist_columns(df: pd.DataFrame, user_info: dict, save_path: Path):
@@ -173,6 +176,7 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    init_logging()
     DIN_DATA_PATH.mkdir(exist_ok=True)
     # args = vars(parse_args())
     feed_info = pd.read_csv(ORIGINAL_DATA_PATH / "feed_info.csv", index_col="feedid")
@@ -197,6 +201,8 @@ if __name__ == "__main__":
         ]
     ]
 
+    test_a.to_csv(ORIGINAL_DATA_PATH / 'test_din.csv', index=False)
+
     for action in ACTION_LIST:
         logger.info("-------------------------")
         logger.info("now in phase: {}".format(action))
@@ -206,7 +212,7 @@ if __name__ == "__main__":
         user_info = gen_user_info(
             user_action_13, action, data_path / "user_info_train.pkl"
         )
-        train, val = gen_train_data(user_action_14, feed_info)
+        train = gen_train_data(user_action_14, feed_info)
 
         user_info_test = gen_user_info(
             user_action_test, action, data_path / "user_info_test.pkl"
@@ -214,5 +220,5 @@ if __name__ == "__main__":
 
         # gen corresponding hist columns
         gen_hist_columns(train, user_info, data_path / "hist_train.pkl")
-        gen_hist_columns(val, user_info, data_path / "hist_val.pkl")
+        # gen_hist_columns(val, user_info, data_path / "hist_val.pkl")
         gen_hist_columns(test_a, user_info_test, data_path / 'hist_test.pkl')
