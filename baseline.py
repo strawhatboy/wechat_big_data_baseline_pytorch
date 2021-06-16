@@ -332,6 +332,9 @@ if __name__ == "__main__":
     random.seed(datetime.now())
     feed_embed = pd.read_csv(ROOT_PATH + '/feed_embeddings_new.csv')
     submit = pd.read_csv(ROOT_PATH + '/test_data.csv')[['userid', 'feedid']]
+    tg_features = 'feed_week_impression,feed_week_engage,feed_week_read_comment,feed_week_like,feed_week_click_avatar,feed_week_forward,feed_week_comment,feed_week_follow,feed_week_favorite,feed_week_videocomplete,feed_week_device1_impression,feed_week_device1_engage,feed_week_device1_read_comment,feed_week_device1_like,feed_week_device1_click_avatar,feed_week_device1_forward,feed_week_device1_comment,feed_week_device1_follow,feed_week_device1_favorite,feed_week_device1_videocomplete,feed_week_device2_impression,feed_week_device2_engage,feed_week_device2_read_comment,feed_week_device2_like,feed_week_device2_click_avatar,feed_week_device2_forward,feed_week_device2_comment,feed_week_device2_follow,feed_week_device2_favorite,feed_week_device2_videocomplete,feed_week_read_comment_ratio,feed_week_like_ratio,feed_week_click_avatar_ratio,feed_week_forward_ratio,feed_week_comment_ratio,feed_week_follow_ratio,feed_week_favorite_ratio,feed_week_engage_ratio,feed_week_videocomplete_ratio,feed_week_device1_read_comment_ratio,feed_week_device1_like_ratio,feed_week_device1_click_avatar_ratio,feed_week_device1_forward_ratio,feed_week_device1_comment_ratio,feed_week_device1_follow_ratio,feed_week_device1_favorite_ratio,feed_week_device1_engage_ratio,feed_week_device1_videocomplete_ratio,feed_week_device2_read_comment_ratio,feed_week_device2_like_ratio,feed_week_device2_click_avatar_ratio,feed_week_device2_forward_ratio,feed_week_device2_comment_ratio,feed_week_device2_follow_ratio,feed_week_device2_favorite_ratio,feed_week_device2_engage_ratio,feed_week_device2_videocomplete_ratio,author_week_impression,author_week_engage,author_week_read_comment,author_week_like,author_week_click_avatar,author_week_forward,author_week_comment,author_week_follow,author_week_favorite,author_week_videocomplete,author_week_device1_impression,author_week_device1_engage,author_week_device1_read_comment,author_week_device1_like,author_week_device1_click_avatar,author_week_device1_forward,author_week_device1_comment,author_week_device1_follow,author_week_device1_favorite,author_week_device1_videocomplete,author_week_device2_impression,author_week_device2_engage,author_week_device2_read_comment,author_week_device2_like,author_week_device2_click_avatar,author_week_device2_forward,author_week_device2_comment,author_week_device2_follow,author_week_device2_favorite,author_week_device2_videocomplete,author_week_read_comment_ratio,author_week_like_ratio,author_week_click_avatar_ratio,author_week_forward_ratio,author_week_comment_ratio,author_week_follow_ratio,author_week_favorite_ratio,author_week_engage_ratio,author_week_videocomplete_ratio,author_week_device1_read_comment_ratio,author_week_device1_like_ratio,author_week_device1_click_avatar_ratio,author_week_device1_forward_ratio,author_week_device1_comment_ratio,author_week_device1_follow_ratio,author_week_device1_favorite_ratio,author_week_device1_engage_ratio,author_week_device1_videocomplete_ratio,author_week_device2_read_comment_ratio,author_week_device2_like_ratio,author_week_device2_click_avatar_ratio,author_week_device2_forward_ratio,author_week_device2_comment_ratio,author_week_device2_follow_ratio,author_week_device2_favorite_ratio,author_week_device2_engage_ratio,author_week_device2_videocomplete_ratio,song_week_impression,song_week_engage,song_week_read_comment,song_week_like,song_week_click_avatar,song_week_forward,song_week_comment,song_week_follow,song_week_favorite,song_week_videocomplete,song_week_device1_impression,song_week_device1_engage,song_week_device1_read_comment,song_week_device1_like,song_week_device1_click_avatar,song_week_device1_forward,song_week_device1_comment,song_week_device1_follow,song_week_device1_favorite,song_week_device1_videocomplete,song_week_device2_impression,song_week_device2_engage,song_week_device2_read_comment,song_week_device2_like,song_week_device2_click_avatar,song_week_device2_forward,song_week_device2_comment,song_week_device2_follow,song_week_device2_favorite,song_week_device2_videocomplete,song_week_read_comment_ratio,song_week_like_ratio,song_week_click_avatar_ratio,song_week_forward_ratio,song_week_comment_ratio,song_week_follow_ratio,song_week_favorite_ratio,song_week_engage_ratio,song_week_videocomplete_ratio,song_week_device1_read_comment_ratio,song_week_device1_like_ratio,song_week_device1_click_avatar_ratio,song_week_device1_forward_ratio,song_week_device1_comment_ratio,song_week_device1_follow_ratio,song_week_device1_favorite_ratio,song_week_device1_engage_ratio,song_week_device1_videocomplete_ratio,song_week_device2_read_comment_ratio,song_week_device2_like_ratio,song_week_device2_click_avatar_ratio,song_week_device2_forward_ratio,song_week_device2_comment_ratio,song_week_device2_follow_ratio,song_week_device2_favorite_ratio,song_week_device2_engage_ratio,song_week_device2_videocomplete_ratio'.split(',')
+    feed_tg_feature = pd.read_csv('/home/wzh/Extra/workspace/zsx/WeChat_Big_Data_Challenge/WX_Changllenge_2021/data/feature/feedid_breakdown.csv')
+    feed_tg_feature = feed_tg_feature.groupby('feedid').mean()
     for action in ACTION_LIST:
         print('now in phase: {}'.format(action))
         USE_FEAT = ['userid', 'feedid', action] + FEA_FEED_LIST[1:]
@@ -348,7 +351,7 @@ if __name__ == "__main__":
         test[target[0]] = 0
         test = test[USE_FEAT]
         data = pd.concat((train, test)).reset_index(drop=True)
-        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)] # + [f"user_embed{i}" for i in range(512)]
+        dense_features = ['videoplayseconds'] + [f"embed{i}" for i in range(512)] + tg_features # + [f"user_embed{i}" for i in range(512)]
         sparse_features = [i for i in USE_FEAT if i not in dense_features and i not in target]
 
         dense_featuresx = ['videoplayseconds']
@@ -396,14 +399,16 @@ if __name__ == "__main__":
         
         user_embed = pd.read_csv(ROOT_PATH + '/user_embeddings_{}.csv'.format(action))
         train = pd.merge(train, feed_embed, on='feedid', how='left')
+        train = pd.merge(train, feed_tg_feature, on='feedid', how='left')
         # train = pd.merge(train, user_embed, on='userid', how='left')
         # data = process_embed(data)
-        train = train[USE_FEAT + [f"embed{i}" for i in range(512)]] # + [f"user_embed{i}" for i in range(512)]]
+        train = train[USE_FEAT + [f"embed{i}" for i in range(512)] + tg_features] # + [f"user_embed{i}" for i in range(512)]]
         train[dense_features] = train[dense_features].fillna(0)
         test = pd.merge(test, feed_embed, on='feedid', how='left')
+        test = pd.merge(test, feed_tg_feature, on='feedid', how='left')
         # test = pd.merge(test, user_embed, on='userid', how='left')
         # data = process_embed(data)
-        test = test[USE_FEAT + [f"embed{i}" for i in range(512)]] # + [f"user_embed{i}" for i in range(512)]]
+        test = test[USE_FEAT + [f"embed{i}" for i in range(512)] + tg_features] # + [f"user_embed{i}" for i in range(512)]]
         test[dense_features] = test[dense_features].fillna(0)
         # print('train shape: {}, test shape: {}, data shape: {}'.format(train.shape, test.shape, data.shape))
 
