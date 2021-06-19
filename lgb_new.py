@@ -7,6 +7,9 @@ import argparse
 import pickle
 import logging
 import lightgbm as lgb
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from evaluation import uAUC
 
 logger = logging.getLogger('lgb_new')
@@ -199,7 +202,7 @@ def offline_train(phases: str):
 
         xobj = { x[0]: {'split': x[1], 'gain': x[2] } for x in list(zip(x_train_on.columns.tolist(), importance_split, importance_gain)) }
 
-        with open(LGB_OUT_OFFLINE_ROOT / './feature_importance_{}.txt'.format(label), 'w', encoding='utf8') as f:
+        with open(LGB_OUT_OFFLINE_ROOT / 'feature_importance_{}.txt'.format(label), 'w', encoding='utf8') as f:
             f.write(str)
             f.flush()
 
@@ -209,20 +212,21 @@ def offline_train(phases: str):
             
         
         logger.info('saving model: {}'.format(label))
-        lgb_model.save_model(LGB_OUT_OFFLINE_ROOT / './lgb_{}.lgb_model'.format(label))
-        lgb.plot_importance(lgb_model, figsize=(30, 180)).figure.savefig(LGB_OUT_OFFLINE_ROOT / './lgb_importance_{}.png'.format(label))
+        # cannot use PosixPath as parameter to 'save_model'
+        lgb_model.save_model((LGB_OUT_OFFLINE_ROOT / 'lgb_{}.lgb_model'.format(label)).as_posix())
+        lgb.plot_importance(lgb_model, figsize=(30, 180)).figure.savefig(LGB_OUT_OFFLINE_ROOT / 'lgb_importance_{}.png'.format(label))
 
     # calculate uAUC
     numerator = 0
     denominator = 0
     for label in phases:
         numerator += ACTION_WEIGHT[label] * aucs[label]
-        denominator += aucs[label]
+        denominator += ACTION_WEIGHT[label]
     
     logger.info('offline uAUC calculated: {}'.format(numerator / denominator))
 
     # save boost_round
-    with open(LGB_OUT_OFFLINE_ROOT / './boost_round.json', 'w', encoding='utf8') as f:
+    with open(LGB_OUT_OFFLINE_ROOT / 'boost_round.json', 'w', encoding='utf8') as f:
         json.dump(boost_round, f)
 
     pass
@@ -249,6 +253,7 @@ def online_train(runid: str):
         # y_test_on = test_on_phase[label]
         # x_test_on = test_on_phase.drop(label, axis=1)
         x_test_on = test_on
+        x_test_on = x_test_on[x_train_on.columns]
 
         logger.info('getting train & val dataset')
 
@@ -291,7 +296,7 @@ def online_train(runid: str):
 
         xobj = { x[0]: {'split': x[1], 'gain': x[2] } for x in list(zip(x_train_on.columns.tolist(), importance_split, importance_gain)) }
 
-        with open(LGB_OUT_ONLINE_ROOT / './feature_importance_{}_{}.txt'.format(label, runid), 'w', encoding='utf8') as f:
+        with open(LGB_OUT_ONLINE_ROOT / 'feature_importance_{}_{}.txt'.format(label, runid), 'w', encoding='utf8') as f:
             f.write(str)
             f.flush()
 
@@ -301,16 +306,16 @@ def online_train(runid: str):
             
         
         logger.info('saving model: {}'.format(label))
-        lgb_model.save_model(LGB_OUT_ONLINE_ROOT / './lgb_{}_{}.lgb_model'.format(label, runid))
-        lgb.plot_importance(lgb_model, figsize=(30, 180)).figure.savefig(LGB_OUT_ONLINE_ROOT / './lgb_importance_{}_{}.png'.format(label, runid))
+        lgb_model.save_model((LGB_OUT_ONLINE_ROOT / 'lgb_{}_{}.lgb_model'.format(label, runid)).as_posix())
+        lgb.plot_importance(lgb_model, figsize=(30, 180)).figure.savefig(LGB_OUT_ONLINE_ROOT / 'lgb_importance_{}_{}.png'.format(label, runid))
 
     # save submit
-    submit.to_csv(LGB_OUT_ONLINE_ROOT / './submit_lgb_{}.csv'.format(runid))
+    submit.to_csv(LGB_OUT_ONLINE_ROOT / 'submit_lgb_{}.csv'.format(runid), index=False)
     pass
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument('--mode', type=str, choices=['process', 'online_train', 'online_train'])
+    p.add_argument('--mode', type=str, choices=['process', 'offline_train', 'online_train'])
     p.add_argument('--phase', type=str)
     p.add_argument('--with_feedinfo', action='store_true')
     p.add_argument('--runid', type=str)
