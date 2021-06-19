@@ -2,3 +2,4 @@ submit/
 out/
 __pycache__/
 *.log
+*.csv
