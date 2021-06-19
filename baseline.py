@@ -344,7 +344,7 @@ if __name__ == "__main__":
     
         print("posi prop:")
         print(sum((train[action]==1)*1)/train.shape[0])
-        test = pd.read_csv(ROOT_PATH + '/test_data.csv')[[i for i in USE_FEAT if i != action] + ['date_']]
+        test = pd.read_csv(ROOT_PATH + '/test_data.csv')[[i for i in USE_FEAT if i != action]]
         
         # USE_FEAT = USE_FEAT
         target = [action]
@@ -405,7 +405,7 @@ if __name__ == "__main__":
         train = train[USE_FEAT + [f"embed{i}" for i in range(512)] + tg_features] # + [f"user_embed{i}" for i in range(512)]]
         train[dense_features] = train[dense_features].fillna(0)
         test = pd.merge(test, feed_embed, on='feedid', how='left')
-        test = pd.merge(test, feed_tg_feature, on=['feedid', 'date_'], how='left')
+        test = pd.merge(test, feed_tg_feature[feed_tg_feature['date_'] == 15], on=['feedid'], how='left')
         # test = pd.merge(test, user_embed, on='userid', how='left')
         # data = process_embed(data)
         test = test[USE_FEAT + [f"embed{i}" for i in range(512)] + tg_features] # + [f"user_embed{i}" for i in range(512)]]
